@@ -7,6 +7,7 @@ import MarketOverviewCard from '@/components/cards/MarketOverviewCard';
 import PriceChart from '@/components/charts/PriceChart';
 import TimeRangeSelector from '@/components/controls/TimeRangeSelector';
 import StockSearch from '@/components/controls/StockSearch';
+import { ThemeToggle } from '@/components/ThemeToggle';
 
 // Define the shape of the expected stock data from the WebSocket message
 interface StockData {
@@ -56,12 +57,15 @@ export default function Home() {
   }, [message]); // This effect runs whenever a new message is received
 
   return (
-    <div className="bg-gray-50 min-h-screen">
-      <header className="bg-white shadow-sm sticky top-0 z-20">
+    <div className="bg-background min-h-screen text-foreground">
+      <header className="bg-card border-b border-border shadow-sm sticky top-0 z-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <h1 className="text-xl font-bold text-gray-800">
-            Indian Stock Market Dashboard
-          </h1>
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-bold">
+              Indian Stock Market Dashboard
+            </h1>
+            <ThemeToggle />
+          </div>
           <div className="flex-1 flex justify-center px-8">
             <StockSearch onSymbolSelect={setActiveSymbol} />
           </div>
@@ -88,15 +92,15 @@ export default function Home() {
                 />
               ))
             ) : (
-              <p className="col-span-full text-center text-gray-500 py-10">Waiting for market data...</p>
+              <p className="col-span-full text-center text-muted-foreground py-10">Waiting for market data...</p>
             )}
           </div>
 
-          <h2 className="text-2xl font-semibold text-gray-700 self-start mt-4">
+          <h2 className="text-2xl font-semibold self-start mt-4">
             {activeSymbol ? `Chart: ${activeSymbol}` : 'Chart'}
           </h2>
 
-          <div className="w-full bg-white p-4 rounded-lg shadow">
+          <div className="w-full bg-card p-4 rounded-lg shadow">
             <div className="flex justify-end mb-4">
               <TimeRangeSelector selectedRange={range} onSelectRange={setRange} />
             </div>
@@ -106,7 +110,7 @@ export default function Home() {
               <PriceChart data={chartData} />
             )}
             {!activeSymbol && !chartLoading && (
-              <div className="h-[350px] flex items-center justify-center"><p className="text-gray-500">Search for a stock or select one from above to see its chart.</p></div>
+              <div className="h-[350px] flex items-center justify-center"><p className="text-muted-foreground">Search for a stock or select one from above to see its chart.</p></div>
             )}
           </div>
         </div>
