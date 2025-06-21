@@ -24,9 +24,20 @@ async function initializeYahooFinance() {
 
 const server = http.createServer();
 const wss = new WebSocketServer({ server });
+const latestDataCache: Map<string, unknown> = new Map();
 
 wss.on('connection', (ws) => {
   console.log('Client connected');
+
+  // Send the cached data to the newly connected client
+  if (latestDataCache.size > 0) {
+    console.log('Sending cached data to new client...');
+    latestDataCache.forEach((data) => {
+      ws.send(JSON.stringify(data));
+    });
+    console.log(`${latestDataCache.size} cached items sent.`);
+  }
+
   ws.on('close', () => console.log('Client disconnected'));
 });
 
@@ -51,35 +62,46 @@ const symbols = [
   '^BSESN' // Sensex
 ];
 
-// Helper to add a delay between API calls to avoid rate-limiting.
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Fetches quotes for all symbols and broadcasts them.
+// Fetches quotes for all symbols and broadcasts them in parallel.
 async function fetchAndBroadcastAll() {
-  console.log("Starting new fetch cycle for all symbols...");
-  for (const symbol of symbols) {
+  console.log("Starting new parallel fetch cycle for all symbols...");
+
+  const promises = symbols.map(async (symbol) => {
     try {
       const quote = await getQuote(symbol);
+      // The 'as const' is important for TypeScript to infer a literal type
+      return { symbol, quote, status: 'fulfilled' as const };
+    } catch (error) {
+      return { symbol, error, status: 'rejected' as const };
+    }
+  });
+
+  const results = await Promise.all(promises);
+
+  results.forEach(result => {
+    if (result.status === 'fulfilled') {
+      const { quote } = result;
       if (quote && quote.regularMarketPrice) {
         const message = {
-          symbol: symbol,
+          symbol: result.symbol,
           data: {
             regularMarketPrice: quote.regularMarketPrice,
             regularMarketChangePercent: quote.regularMarketChangePercent,
           },
           ts: Date.now(),
         };
+        latestDataCache.set(result.symbol, message); // Update cache
         broadcast(message);
-        console.log(`Broadcasted data for ${symbol}`);
+        console.log(`Broadcasted data for ${result.symbol}`);
       } else {
-        console.warn(`No data returned for ${symbol}`);
+        console.warn(`No valid data returned for ${result.symbol}`);
       }
-    } catch (error) {
-      console.error(`Failed to fetch quote for ${symbol}:`, error);
+    } else { // status === 'rejected'
+      const { error } = result;
+      console.error(`Failed to fetch quote for ${result.symbol}:`, error);
     }
-    // A small delay is crucial to prevent being rate-limited by the Yahoo API.
-    await sleep(250);
-  }
+  });
+
   console.log("Fetch cycle complete.");
 }
 
@@ -87,9 +109,14 @@ async function fetchAndBroadcastAll() {
 async function main() {
   await initializeYahooFinance();
 
-  // Start the global fetch loop.
-  fetchAndBroadcastAll(); // Fetch immediately on start.
-  setInterval(fetchAndBroadcastAll, 60000); // Then repeat every 60 seconds.
+  // Do the initial fetch and wait for it to complete before starting the server.
+  // This ensures the cache is populated for the first client that connects.
+  console.log('Performing initial data fetch...');
+  await fetchAndBroadcastAll();
+  console.log('Initial data fetch complete. Cache is populated.');
+
+  // Now, start the recurring fetch loop.
+  setInterval(fetchAndBroadcastAll, 60000);
 
   server.listen(PORT, () => {
     console.log(`WebSocket server listening on ws://localhost:${PORT}`);

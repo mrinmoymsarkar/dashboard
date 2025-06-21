@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import useWebSocket from '@/hooks/useWebSocket';
 import useHistoricalData from '@/hooks/useHistoricalData';
 import MarketOverviewCard from '@/components/cards/MarketOverviewCard';
@@ -8,53 +8,35 @@ import PriceChart from '@/components/charts/PriceChart';
 import TimeRangeSelector from '@/components/controls/TimeRangeSelector';
 import StockSearch from '@/components/controls/StockSearch';
 import { ThemeToggle } from '@/components/ThemeToggle';
-
-// Define the shape of the expected stock data from the WebSocket message
-interface StockData {
-  regularMarketPrice: number;
-  regularMarketChangePercent: number;
-}
-
-// Define the shape of the WebSocket message itself
-interface WSMessage {
-  symbol: string;
-  data: StockData;
-  ts: number;
-}
+import { StockData, WSMessage } from '@/types';
 
 export default function Home() {
-  // Connect to the WebSocket server
-  const { message, connected } = useWebSocket('ws://localhost:4000');
-  
   // State to hold the latest stock information for all symbols
   const [stocks, setStocks] = useState<Record<string, StockData>>({});
   // State to determine which stock's chart is displayed
   const [activeSymbol, setActiveSymbol] = useState<string>('');
+
+  // Define the callback for handling incoming WebSocket messages.
+  // We use useCallback to ensure this function has a stable identity.
+  const handleMessage = useCallback((message: WSMessage) => {
+    const { symbol, data } = message;
+    if (symbol && data && typeof (data as StockData).regularMarketPrice === 'number') {
+      setStocks(prevStocks => ({
+        ...prevStocks,
+        [symbol]: data as StockData,
+      }));
+
+      // Set the first received symbol as the active one for the chart
+      // Use a functional update for setActiveSymbol to avoid dependency
+      setActiveSymbol(prevActive => prevActive || symbol);
+    }
+  }, []); // Empty dependency array means this function is created once.
+
+  // Connect to the WebSocket server and provide the callback
+  const { connected } = useWebSocket('ws://localhost:4000', { onMessage: handleMessage });
+  
   const [range, setRange] = useState('1mo');
   const { data: chartData, loading: chartLoading, error: chartError } = useHistoricalData(activeSymbol, range);
-
-  useEffect(() => {
-    // When a new message arrives from the WebSocket
-    if (message) {
-      try {
-        const parsedMessage = message as WSMessage;
-        if (parsedMessage.symbol && parsedMessage.data && typeof parsedMessage.data.regularMarketPrice === 'number') {
-          // Update the state for the specific stock
-          setStocks(prevStocks => ({
-            ...prevStocks,
-            [parsedMessage.symbol]: parsedMessage.data
-          }));
-
-          // Set the first received symbol as the active one for the chart
-          if (!activeSymbol) {
-            setActiveSymbol(parsedMessage.symbol);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to process WebSocket message:", err);
-      }
-    }
-  }, [message]); // This effect runs whenever a new message is received
 
   return (
     <div className="bg-background min-h-screen text-foreground">

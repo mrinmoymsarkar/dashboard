@@ -1,15 +1,16 @@
 "use client";
 
 import {
-  LineChart,
-  Line,
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
 } from 'recharts';
 import { useTheme } from 'next-themes';
+import { useMemo } from 'react';
 
 // The shape of the data that our chart expects
 interface ChartData {
@@ -21,20 +22,56 @@ interface PriceChartProps {
   data: ChartData[];
 }
 
+// Helper to get theme-aware colors
+const getCssVar = (name: string) => `hsl(var(${name}))`;
+
 export default function PriceChart({ data }: PriceChartProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const axisColor = isDark ? 'hsl(var(--muted-foreground))' : '#4B5563'; // gray-600
-  const gridColor = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
-  const strokeColor = isDark ? 'hsl(var(--primary))' : '#10B981';
-  const tooltipBg = isDark ? 'rgba(30,41,59,0.9)' : 'rgba(255,255,255,0.9)';
-  const tooltipBorder = isDark ? 'hsl(var(--border))' : '#e2e8f0';
+
+  // Memoize trend calculation and colors to prevent re-calculating on every render
+  const { trend, strokeColor, gradientStart, gradientStop } = useMemo(() => {
+    if (data.length < 2) {
+      const neutralColor = getCssVar('--primary');
+      return {
+        trend: 'neutral',
+        strokeColor: neutralColor,
+        gradientStart: neutralColor,
+        gradientStop: getCssVar('--background'),
+      };
+    }
+
+    const firstPrice = data[0].price;
+    const lastPrice = data[data.length - 1].price;
+    const isUp = lastPrice >= firstPrice;
+
+    const positiveColor = '#16A34A'; // green-600
+    const negativeColor = '#DC2626'; // red-600
+
+    return {
+      trend: isUp ? 'up' : 'down',
+      strokeColor: isUp ? positiveColor : negativeColor,
+      gradientStart: isUp ? positiveColor : negativeColor,
+      gradientStop: getCssVar('--background'),
+    };
+  }, [data, isDark]);
+
+  const axisColor = getCssVar('--muted-foreground');
+  const gridColor = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)';
+  const tooltipBg = getCssVar('--card');
+  const tooltipBorder = getCssVar('--border');
 
   return (
-    <div className="w-full h-[400px] bg-card rounded-lg">
+    <div className="w-full h-[400px] bg-transparent">
       <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ left: 10, right: 20, top: 10, bottom: 10 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} />
+        <AreaChart data={data} margin={{ left: 0, right: 20, top: 10, bottom: 10 }}>
+          <defs>
+            <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={gradientStart} stopOpacity={0.4} />
+              <stop offset="95%" stopColor={gradientStop} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke={gridColor} vertical={false} />
           <XAxis
             dataKey="date"
             tickFormatter={(str) => new Date(str).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -44,6 +81,7 @@ export default function PriceChart({ data }: PriceChartProps) {
             tick={{ fill: axisColor, fontSize: 12 }}
           />
           <YAxis
+            orientation="right"
             domain={['dataMin', 'dataMax']}
             axisLine={false}
             tickLine={false}
@@ -55,9 +93,9 @@ export default function PriceChart({ data }: PriceChartProps) {
             contentStyle={{
               backgroundColor: tooltipBg,
               border: `1px solid ${tooltipBorder}`,
-              borderRadius: '0.5rem',
-              backdropFilter: 'blur(5px)',
-              color: 'hsl(var(--foreground))',
+              borderRadius: '0.75rem', // rounded-lg
+              boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)', // shadow-md
+              color: getCssVar('--foreground'),
             }}
             labelFormatter={(label) =>
               new Date(label).toLocaleDateString('en-US', {
@@ -67,17 +105,19 @@ export default function PriceChart({ data }: PriceChartProps) {
                 day: 'numeric',
               })
             }
-            formatter={(value: number) => [value.toFixed(2), 'Price']}
+            formatter={(value: number) => [`₹${value.toFixed(2)}`, 'Price']}
+            cursor={{ stroke: getCssVar('--primary'), strokeDasharray: '3 3' }}
           />
-          <Line
+          <Area
             type="monotone"
             dataKey="price"
             stroke={strokeColor}
-            strokeWidth={2}
+            strokeWidth={2.5}
+            fill="url(#priceGradient)"
             dot={false}
-            activeDot={{ r: 6 }}
+            activeDot={{ r: 6, strokeWidth: 2 }}
           />
-        </LineChart>
+        </AreaChart>
       </ResponsiveContainer>
     </div>
   );
