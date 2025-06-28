@@ -33,10 +33,28 @@ export default function Home() {
   }, []); // Empty dependency array means this function is created once.
 
   // Connect to the WebSocket server and provide the callback
-  const { connected } = useWebSocket('ws://localhost:4000', { onMessage: handleMessage });
+  // Use polling fallback for Vercel deployment
+  const { connected, isPolling } = useWebSocket('ws://localhost:4000', { 
+    onMessage: handleMessage,
+    fallbackToPolling: true,
+    pollingInterval: 30000 // 30 seconds
+  });
   
   const [range, setRange] = useState('1mo');
   const { data: chartData, loading: chartLoading, error: chartError } = useHistoricalData(activeSymbol, range);
+
+  // Determine connection status text and color
+  const getConnectionStatus = () => {
+    if (connected && !isPolling) {
+      return { text: 'WebSocket Connected', color: 'text-green-600' };
+    } else if (connected && isPolling) {
+      return { text: 'Polling Mode', color: 'text-yellow-600' };
+    } else {
+      return { text: 'Disconnected', color: 'text-red-600' };
+    }
+  };
+
+  const connectionStatus = getConnectionStatus();
 
   return (
     <div className="bg-background min-h-screen text-foreground">
@@ -52,9 +70,9 @@ export default function Home() {
             <StockSearch onSymbolSelect={setActiveSymbol} />
           </div>
           <div className="text-sm font-medium">
-            <span>WebSocket: </span>
-            <span className={connected ? 'text-green-600' : 'text-red-600'}>
-              {connected ? 'Connected' : 'Disconnected'}
+            <span>Status: </span>
+            <span className={connectionStatus.color}>
+              {connectionStatus.text}
             </span>
           </div>
         </div>
